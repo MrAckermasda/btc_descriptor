@@ -331,11 +331,13 @@ class BtcDescManager {
                  const std::vector<BTC> &btcs_vec,
                  bool save_plane_cloud = true);
 
-  // Load a frame's BTCs, binary descriptors and plane cloud from files.
+  // Load a frame's BTCs and binary descriptors from .bin file.
+  // If load_plane_cloud is true, also load plane cloud from _planes.pcd.
   // Populates history_binary_list_ and plane_cloud_vec_ internally.
-  // Returns false if files do not exist (end of dataset).
+  // Returns false if .bin file does not exist (end of dataset).
   bool LoadFrame(const std::string &save_dir, int frame_id,
-                 std::vector<BTC> &btcs_vec);
+                 std::vector<BTC> &btcs_vec,
+                 bool load_plane_cloud = true);
 
   // Geometrical optimization by plane-to-plane icp
   void PlaneGeomrtricIcp(

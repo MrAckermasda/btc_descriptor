@@ -1797,9 +1797,17 @@ void BtcDescManager::candidate_verify(
         sucess_match_list.push_back(verify_pair);
       }
     }
-    verify_score = plane_geometric_verify(
-        plane_cloud_vec_.back(),
-        plane_cloud_vec_[candidate_matcher.match_id_.second], relative_pose);
+    if (!plane_cloud_vec_.back()->empty() &&
+        !plane_cloud_vec_[candidate_matcher.match_id_.second]->empty()) {
+      verify_score = plane_geometric_verify(
+          plane_cloud_vec_.back(),
+          plane_cloud_vec_[candidate_matcher.match_id_.second], relative_pose);
+    } else {
+      // Lightweight mode: no plane clouds available.
+      // Fall back to vote-ratio score so loops can still be detected.
+      verify_score = static_cast<double>(sucess_match_list.size()) /
+                     std::max<size_t>(candidate_matcher.match_list_.size(), 1);
+    }
   } else {
     verify_score = -1;
   }
@@ -2006,7 +2014,8 @@ void BtcDescManager::SaveFrame(const std::string &save_dir, int frame_id,
 // ---------------------------------------------------------------------------
 
 bool BtcDescManager::LoadFrame(const std::string &save_dir, int frame_id,
-                               std::vector<BTC> &btcs_vec) {
+                               std::vector<BTC> &btcs_vec,
+                               bool load_plane_cloud) {
   std::ostringstream ss;
   ss << save_dir << "/frame_" << std::setfill('0') << std::setw(6) << frame_id;
   std::string bin_path = ss.str() + ".bin";
@@ -2047,13 +2056,14 @@ bool BtcDescManager::LoadFrame(const std::string &save_dir, int frame_id,
   history_binary_list_.push_back(std::move(binary_list));
   ifs.close();
 
-  // Load plane cloud
+  // Load plane cloud only when requested
   pcl::PointCloud<pcl::PointXYZINormal>::Ptr plane_cloud(
       new pcl::PointCloud<pcl::PointXYZINormal>);
-  if (pcl::io::loadPCDFile<pcl::PointXYZINormal>(pcd_path, *plane_cloud) ==
-      -1) {
-    ROS_WARN_STREAM("[LoadFrame] Cannot load plane cloud: " << pcd_path
-                                                            << ", using empty");
+  if (load_plane_cloud) {
+    if (pcl::io::loadPCDFile<pcl::PointXYZINormal>(pcd_path, *plane_cloud) ==
+        -1) {
+      ROS_WARN_STREAM("[LoadFrame] Cannot load plane cloud: " << pcd_path);
+    }
   }
   plane_cloud_vec_.push_back(plane_cloud);
 

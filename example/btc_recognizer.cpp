@@ -104,29 +104,28 @@ int main(int argc, char **argv) {
 
   visualization_msgs::MarkerArray marker_array;
 
-  // has_plane_cloud: detected from first frame, gates TP/FP classification
+  // Detect plane cloud availability before the main loop by checking frame 0
   bool has_plane_cloud = false;
-  bool plane_cloud_checked = false;
+  {
+    std::ostringstream ss;
+    ss << desc_dir << "/frame_" << std::setfill('0') << std::setw(6) << 0
+       << "_planes.pcd";
+    std::ifstream test(ss.str());
+    has_plane_cloud = test.good();
+  }
+  if (has_plane_cloud) {
+    ROS_INFO("[Recognizer] Plane clouds available: TP/FP classification enabled");
+  } else {
+    ROS_WARN("[Recognizer] No plane clouds found (lightweight mode). "
+             "Detected loops shown in yellow without TP/FP classification.");
+  }
 
   for (int frame_id = 0; ros::ok(); ++frame_id) {
     // --------------- Load Frame ---------------
     std::vector<BTC> btcs_vec;
-    if (!btc_manager.LoadFrame(desc_dir, frame_id, btcs_vec)) {
+    if (!btc_manager.LoadFrame(desc_dir, frame_id, btcs_vec, has_plane_cloud)) {
       ROS_INFO_STREAM("[Recognizer] No more frames after " << frame_id);
       break;
-    }
-
-    // Detect plane cloud availability from first frame
-    if (!plane_cloud_checked) {
-      plane_cloud_checked = true;
-      has_plane_cloud = !btc_manager.plane_cloud_vec_.empty() &&
-                        !btc_manager.plane_cloud_vec_.back()->empty();
-      if (has_plane_cloud) {
-        ROS_INFO("[Recognizer] Plane clouds available: TP/FP classification enabled");
-      } else {
-        ROS_WARN("[Recognizer] No plane clouds found (lightweight mode). "
-                 "Detected loops shown in yellow without TP/FP classification.");
-      }
     }
 
     ROS_INFO_STREAM("[Recognizer] Frame " << frame_id

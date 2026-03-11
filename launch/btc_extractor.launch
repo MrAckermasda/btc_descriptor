@@ -4,7 +4,7 @@
 
   <arg name="rviz"              default="true" />
   <arg name="read_bin"          default="true" />
-  <arg name="save_plane_cloud"  default="false" />
+  <arg name="save_plane_cloud"  default="true" />
   <arg name="rate_hz"           default="100.0" />
   <arg name="setting_path"      default="$(find btc_desc)/config/config_outdoor.yaml" />
   <arg name="pcds_dir"          default="/home/lyl/lcd_ws/src/btc_descriptor/poses/velodyne_points/data" />
