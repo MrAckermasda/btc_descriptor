@@ -1888,3 +1888,174 @@ double BtcDescManager::plane_geometric_verify(
   }
   return useful_match / source_cloud->size();
 }
+
+// ---------------------------------------------------------------------------
+// Serialization helpers (file-local)
+// ---------------------------------------------------------------------------
+
+static void write_binary_desc(std::ofstream &ofs, const BinaryDescriptor &bd) {
+  ofs.write(reinterpret_cast<const char *>(bd.location_.data()),
+            3 * sizeof(double));
+  ofs.write(reinterpret_cast<const char *>(&bd.summary_), sizeof(double));
+  uint32_t sz = static_cast<uint32_t>(bd.occupy_array_.size());
+  ofs.write(reinterpret_cast<const char *>(&sz), sizeof(uint32_t));
+  uint32_t num_bytes = (sz + 7) / 8;
+  std::vector<uint8_t> packed(num_bytes, 0);
+  for (uint32_t i = 0; i < sz; ++i) {
+    if (bd.occupy_array_[i]) packed[i / 8] |= (1u << (i % 8));
+  }
+  ofs.write(reinterpret_cast<const char *>(packed.data()), num_bytes);
+}
+
+static void read_binary_desc(std::ifstream &ifs, BinaryDescriptor &bd) {
+  ifs.read(reinterpret_cast<char *>(bd.location_.data()), 3 * sizeof(double));
+  ifs.read(reinterpret_cast<char *>(&bd.summary_), sizeof(double));
+  uint32_t sz;
+  ifs.read(reinterpret_cast<char *>(&sz), sizeof(uint32_t));
+  uint32_t num_bytes = (sz + 7) / 8;
+  std::vector<uint8_t> packed(num_bytes, 0);
+  ifs.read(reinterpret_cast<char *>(packed.data()), num_bytes);
+  bd.occupy_array_.resize(sz);
+  for (uint32_t i = 0; i < sz; ++i) {
+    bd.occupy_array_[i] = (packed[i / 8] >> (i % 8)) & 1u;
+  }
+}
+
+static void write_btc(std::ofstream &ofs, const BTC &btc) {
+  ofs.write(reinterpret_cast<const char *>(btc.triangle_.data()),
+            3 * sizeof(double));
+  ofs.write(reinterpret_cast<const char *>(btc.angle_.data()), 3 * sizeof(double));
+  ofs.write(reinterpret_cast<const char *>(btc.center_.data()),
+            3 * sizeof(double));
+  ofs.write(reinterpret_cast<const char *>(&btc.frame_number_), sizeof(int));
+  write_binary_desc(ofs, btc.binary_A_);
+  write_binary_desc(ofs, btc.binary_B_);
+  write_binary_desc(ofs, btc.binary_C_);
+}
+
+static void read_btc(std::ifstream &ifs, BTC &btc) {
+  ifs.read(reinterpret_cast<char *>(btc.triangle_.data()), 3 * sizeof(double));
+  ifs.read(reinterpret_cast<char *>(btc.angle_.data()), 3 * sizeof(double));
+  ifs.read(reinterpret_cast<char *>(btc.center_.data()), 3 * sizeof(double));
+  ifs.read(reinterpret_cast<char *>(&btc.frame_number_), sizeof(int));
+  read_binary_desc(ifs, btc.binary_A_);
+  read_binary_desc(ifs, btc.binary_B_);
+  read_binary_desc(ifs, btc.binary_C_);
+}
+
+// ---------------------------------------------------------------------------
+// BtcDescManager::SaveFrame
+// ---------------------------------------------------------------------------
+
+void BtcDescManager::SaveFrame(const std::string &save_dir, int frame_id,
+                               const std::vector<BTC> &btcs_vec,
+                               bool save_plane_cloud) {
+  // Build file paths
+  std::ostringstream ss;
+  ss << save_dir << "/frame_" << std::setfill('0') << std::setw(6) << frame_id;
+  std::string bin_path = ss.str() + ".bin";
+  std::string pcd_path = ss.str() + "_planes.pcd";
+
+  // Save BTC binary file
+  std::ofstream ofs(bin_path, std::ios::binary);
+  if (!ofs.is_open()) {
+    ROS_ERROR_STREAM("[SaveFrame] Cannot open file for writing: " << bin_path);
+    return;
+  }
+
+  // Header
+  uint32_t magic = 0x42544300u;  // 'BTC\0'
+  uint32_t version = 1u;
+  ofs.write(reinterpret_cast<const char *>(&magic), sizeof(uint32_t));
+  ofs.write(reinterpret_cast<const char *>(&version), sizeof(uint32_t));
+  ofs.write(reinterpret_cast<const char *>(&frame_id), sizeof(int));
+
+  uint32_t num_btcs = static_cast<uint32_t>(btcs_vec.size());
+  ofs.write(reinterpret_cast<const char *>(&num_btcs), sizeof(uint32_t));
+
+  // Determine binary descriptor list for this frame
+  const std::vector<BinaryDescriptor> *binary_list_ptr = nullptr;
+  if (!history_binary_list_.empty()) {
+    binary_list_ptr = &history_binary_list_.back();
+  }
+  uint32_t num_binary =
+      binary_list_ptr ? static_cast<uint32_t>(binary_list_ptr->size()) : 0u;
+  ofs.write(reinterpret_cast<const char *>(&num_binary), sizeof(uint32_t));
+
+  // Write BTCs
+  for (const auto &btc : btcs_vec) {
+    write_btc(ofs, btc);
+  }
+
+  // Write BinaryDescriptors
+  if (binary_list_ptr) {
+    for (const auto &bd : *binary_list_ptr) {
+      write_binary_desc(ofs, bd);
+    }
+  }
+  ofs.close();
+
+  // Save plane cloud as PCD
+  if (save_plane_cloud && !plane_cloud_vec_.empty()) {
+    pcl::io::savePCDFileBinaryCompressed(pcd_path, *plane_cloud_vec_.back());
+  }
+}
+
+// ---------------------------------------------------------------------------
+// BtcDescManager::LoadFrame
+// ---------------------------------------------------------------------------
+
+bool BtcDescManager::LoadFrame(const std::string &save_dir, int frame_id,
+                               std::vector<BTC> &btcs_vec) {
+  std::ostringstream ss;
+  ss << save_dir << "/frame_" << std::setfill('0') << std::setw(6) << frame_id;
+  std::string bin_path = ss.str() + ".bin";
+  std::string pcd_path = ss.str() + "_planes.pcd";
+
+  std::ifstream ifs(bin_path, std::ios::binary);
+  if (!ifs.is_open()) {
+    return false;
+  }
+
+  // Read and verify header
+  uint32_t magic, version;
+  int stored_frame_id;
+  ifs.read(reinterpret_cast<char *>(&magic), sizeof(uint32_t));
+  ifs.read(reinterpret_cast<char *>(&version), sizeof(uint32_t));
+  ifs.read(reinterpret_cast<char *>(&stored_frame_id), sizeof(int));
+
+  if (magic != 0x42544300u) {
+    ROS_ERROR_STREAM("[LoadFrame] Invalid magic number in " << bin_path);
+    return false;
+  }
+
+  uint32_t num_btcs, num_binary;
+  ifs.read(reinterpret_cast<char *>(&num_btcs), sizeof(uint32_t));
+  ifs.read(reinterpret_cast<char *>(&num_binary), sizeof(uint32_t));
+
+  // Read BTCs
+  btcs_vec.resize(num_btcs);
+  for (uint32_t i = 0; i < num_btcs; ++i) {
+    read_btc(ifs, btcs_vec[i]);
+  }
+
+  // Read BinaryDescriptors into history_binary_list_
+  std::vector<BinaryDescriptor> binary_list(num_binary);
+  for (uint32_t i = 0; i < num_binary; ++i) {
+    read_binary_desc(ifs, binary_list[i]);
+  }
+  history_binary_list_.push_back(std::move(binary_list));
+  ifs.close();
+
+  // Load plane cloud
+  pcl::PointCloud<pcl::PointXYZINormal>::Ptr plane_cloud(
+      new pcl::PointCloud<pcl::PointXYZINormal>);
+  if (pcl::io::loadPCDFile<pcl::PointXYZINormal>(pcd_path, *plane_cloud) ==
+      -1) {
+    ROS_WARN_STREAM("[LoadFrame] Cannot load plane cloud: " << pcd_path
+                                                            << ", using empty");
+  }
+  plane_cloud_vec_.push_back(plane_cloud);
+
+  return true;
+}

@@ -1,0 +1,30 @@
+<launch>
+<!-- Launch file for BTC place recognition (online query phase) -->
+<!-- Reads saved descriptors -> LoadFrame() -> SearchLoop() -> AddBtcDescs() -->
+
+  <arg name="rviz"              default="true" />
+  <arg name="setting_path"      default="$(find btc_desc)/config/config_outdoor.yaml" />
+  <arg name="desc_dir"          default="/home/lyl/lcd_ws/src/btc_descriptor/btc_decs" />
+  <arg name="pose_file"         default="/home/lyl/lcd_ws/src/btc_descriptor/poses/kitti00.txt" />
+  <arg name="cloud_overlap_thr" default="0.5" />
+  <arg name="rate_hz"           default="100.0" />
+
+  <node
+    pkg="btc_desc"
+    type="btc_recognizer"
+    name="btc_recognizer"
+    output="screen"
+  >
+    <param name="setting_path"      type="string" value="$(arg setting_path)" />
+    <param name="desc_dir"          type="string" value="$(arg desc_dir)" />
+    <param name="pose_file"         type="string" value="$(arg pose_file)" />
+    <param name="cloud_overlap_thr" type="double" value="$(arg cloud_overlap_thr)" />
+    <param name="rate_hz"           type="double" value="$(arg rate_hz)" />
+  </node>
+
+  <group if="$(arg rviz)">
+    <node launch-prefix="nice" pkg="rviz" type="rviz" name="rviz"
+          args="-d $(find btc_desc)/rviz_cfg/loop.rviz" />
+  </group>
+
+</launch>

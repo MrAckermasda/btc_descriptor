@@ -16,7 +16,9 @@
 #include <Eigen/StdVector>
 #include <execution>
 #include <fstream>
+#include <iomanip>
 #include <mutex>
+#include <pcl/io/pcd_io.h>
 #include <opencv2/opencv.hpp>
 #include <sstream>
 #include <string>
@@ -321,6 +323,19 @@ class BtcDescManager {
 
   // add descriptors to database
   void AddBtcDescs(const std::vector<BTC> &btcs_vec);
+
+  // Save current frame's BTCs and binary descriptors to binary file.
+  // If save_plane_cloud is true, also save plane cloud to PCD file.
+  // Call after GenerateBtcDescs().
+  void SaveFrame(const std::string &save_dir, int frame_id,
+                 const std::vector<BTC> &btcs_vec,
+                 bool save_plane_cloud = true);
+
+  // Load a frame's BTCs, binary descriptors and plane cloud from files.
+  // Populates history_binary_list_ and plane_cloud_vec_ internally.
+  // Returns false if files do not exist (end of dataset).
+  bool LoadFrame(const std::string &save_dir, int frame_id,
+                 std::vector<BTC> &btcs_vec);
 
   // Geometrical optimization by plane-to-plane icp
   void PlaneGeomrtricIcp(

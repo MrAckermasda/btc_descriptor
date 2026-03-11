@@ -1,0 +1,34 @@
+<launch>
+<!-- Launch file for BTC descriptor extraction (offline mapping phase) -->
+<!-- Reads point clouds -> GenerateBtcDescs() -> SaveFrame() to disk -->
+
+  <arg name="rviz"              default="true" />
+  <arg name="read_bin"          default="true" />
+  <arg name="save_plane_cloud"  default="false" />
+  <arg name="rate_hz"           default="100.0" />
+  <arg name="setting_path"      default="$(find btc_desc)/config/config_outdoor.yaml" />
+  <arg name="pcds_dir"          default="/home/lyl/lcd_ws/src/btc_descriptor/poses/velodyne_points/data" />
+  <arg name="pose_file"         default="/home/lyl/lcd_ws/src/btc_descriptor/poses/kitti00.txt" />
+  <arg name="output_dir"        default="/home/lyl/lcd_ws/src/btc_descriptor/btc_decs" />
+
+  <node
+    pkg="btc_desc"
+    type="btc_extractor"
+    name="btc_extractor"
+    output="screen"
+  >
+    <param name="setting_path"     type="string" value="$(arg setting_path)" />
+    <param name="pcds_dir"         type="string" value="$(arg pcds_dir)" />
+    <param name="pose_file"        type="string" value="$(arg pose_file)" />
+    <param name="output_dir"       type="string" value="$(arg output_dir)" />
+    <param name="read_bin"         type="bool"   value="$(arg read_bin)" />
+    <param name="save_plane_cloud" type="bool"   value="$(arg save_plane_cloud)" />
+    <param name="rate_hz"          type="double" value="$(arg rate_hz)" />
+  </node>
+
+  <group if="$(arg rviz)">
+    <node launch-prefix="nice" pkg="rviz" type="rviz" name="rviz"
+          args="-d $(find btc_desc)/rviz_cfg/loop.rviz" />
+  </group>
+
+</launch>
