@@ -37,6 +37,7 @@ int main(int argc, char **argv) {
   std::string pcds_dir = "";
   std::string pose_file = "";
   std::string result_file = "";
+  std::string output_dir = "";
   double cloud_overlap_thr = 0.5;
   bool calc_gt_enable = false;
   bool read_bin = true;
@@ -45,6 +46,22 @@ int main(int argc, char **argv) {
   nh.param<std::string>("pcds_dir", pcds_dir, "");
   nh.param<std::string>("pose_file", pose_file, "");
   nh.param<bool>("read_bin", read_bin, true);
+  nh.param<std::string>("output_dir", output_dir, "./btc_results");
+
+  // Create output directory
+  boost::filesystem::create_directories(output_dir);
+
+  // Open output files
+  std::ofstream time_file(output_dir + "/timing_per_frame.txt");
+  std::ofstream loop_file(output_dir + "/loop_detection.txt");
+  std::ofstream pose_out_file(output_dir + "/trajectory.txt");
+  std::ofstream descriptor_count_file(output_dir + "/descriptor_count.txt");
+
+  time_file << "# frame_id descriptor_time_ms query_time_ms update_time_ms total_time_ms"
+            << std::endl;
+  loop_file << "# query_id matched_id score overlap is_tp" << std::endl;
+  pose_out_file << "# frame_id x y z" << std::endl;
+  descriptor_count_file << "# frame_id btc_count binary_count" << std::endl;
 
   ros::Publisher pubOdomAftMapped =
       nh.advertise<nav_msgs::Odometry>("/aft_mapped_to_init", 10);
@@ -128,7 +145,7 @@ int main(int argc, char **argv) {
       Eigen::Matrix3d rotation = pose_list[submap_id].second;
       if (read_bin) {
         std::stringstream ss;
-        ss << pcds_dir << "/" << std::setfill('0') << std::setw(6) << submap_id
+        ss << pcds_dir << "/" << std::setfill('0') << std::setw(10) << submap_id
            << ".bin";
         std::string pcd_file = ss.str();
         auto t_load_start = std::chrono::high_resolution_clock::now();
@@ -185,6 +202,15 @@ int main(int argc, char **argv) {
                                     btcs_vec);
       auto t_descriptor_end = std::chrono::high_resolution_clock::now();
       descriptor_time.push_back(time_inc(t_descriptor_end, t_descriptor_begin));
+
+      // Record descriptor count
+      descriptor_count_file << submap_id << " " << btcs_vec.size() << " "
+                            << btc_manager->history_binary_list_.size() << std::endl;
+
+      // Record pose (trajectory)
+      pose_out_file << submap_id << " " << translation[0] << " "
+                    << translation[1] << " " << translation[2] << std::endl;
+
       // step2. Searching Loop
       auto t_query_begin = std::chrono::high_resolution_clock::now();
       std::pair<int, double> search_result(-1, 0);
@@ -212,6 +238,14 @@ int main(int argc, char **argv) {
       btc_manager->AddBtcDescs(btcs_vec);
       auto t_map_update_end = std::chrono::high_resolution_clock::now();
       update_time.push_back(time_inc(t_map_update_end, t_map_update_begin));
+
+      // Write per-frame timing data
+      double desc_t = time_inc(t_descriptor_end, t_descriptor_begin);
+      double query_t = time_inc(t_query_end, t_query_begin);
+      double update_t = time_inc(t_map_update_end, t_map_update_begin);
+      time_file << submap_id << " " << desc_t << " " << query_t << " "
+                << update_t << " " << (desc_t + query_t + update_t) << std::endl;
+
       std::cout << "[Time] descriptor extraction: "
                 << time_inc(t_descriptor_end, t_descriptor_begin) << "ms, "
                 << "query: " << time_inc(t_query_end, t_query_begin) << "ms, "
@@ -259,6 +293,13 @@ int main(int argc, char **argv) {
         double cloud_overlap =
             calc_overlap(transform_cloud.makeShared(),
                          btc_manager->key_cloud_vec_[search_result.first], 0.5);
+
+        // Record loop detection result
+        bool is_tp = (cloud_overlap >= cloud_overlap_thr);
+        loop_file << submap_id << " " << search_result.first << " "
+                  << search_result.second << " " << cloud_overlap << " "
+                  << (is_tp ? 1 : 0) << std::endl;
+
         pcl::PointCloud<pcl::PointXYZ> match_key_points_cloud;
         for (auto var :
              btc_manager->history_binary_list_[search_result.first]) {
@@ -387,5 +428,27 @@ int main(int argc, char **argv) {
             << "ms, update: " << mean_update_time << "ms, total: "
             << mean_descriptor_time + mean_query_time + mean_update_time << "ms"
             << std::endl;
+
+  // Write summary file
+  std::ofstream summary_file(output_dir + "/summary.txt");
+  summary_file << "total_frames " << pose_list.size() << std::endl;
+  summary_file << "triggered_loops " << triggle_loop_num << std::endl;
+  summary_file << "true_loops " << true_loop_num << std::endl;
+  summary_file << "false_loops " << (triggle_loop_num - true_loop_num) << std::endl;
+  summary_file << "precision " << (triggle_loop_num > 0 ? (double)true_loop_num / triggle_loop_num : 0) << std::endl;
+  summary_file << "mean_descriptor_time_ms " << mean_descriptor_time << std::endl;
+  summary_file << "mean_query_time_ms " << mean_query_time << std::endl;
+  summary_file << "mean_update_time_ms " << mean_update_time << std::endl;
+  summary_file << "mean_total_time_ms " << (mean_descriptor_time + mean_query_time + mean_update_time) << std::endl;
+  summary_file << "cloud_overlap_threshold " << cloud_overlap_thr << std::endl;
+  summary_file.close();
+
+  time_file.close();
+  loop_file.close();
+  pose_out_file.close();
+  descriptor_count_file.close();
+
+  std::cout << "[Output] Results saved to: " << output_dir << std::endl;
+
   return 0;
 }
