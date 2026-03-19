@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 from matplotlib import rcParams
 
 # 设置中文字体支持
-rcParams['font.sans-serif'] = ['SimHei', 'DejaVu Sans', 'Arial']
+rcParams['font.sans-serif'] = ['Noto Sans CJK SC', 'SimHei', 'DejaVu Sans', 'Arial']
 rcParams['axes.unicode_minus'] = False
 rcParams['figure.dpi'] = 150
 rcParams['savefig.dpi'] = 300
