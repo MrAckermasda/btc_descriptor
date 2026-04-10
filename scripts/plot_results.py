@@ -7,12 +7,14 @@ BTC Place Recognition 实验结果绘图脚本
 
 import os
 import sys
+import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import rcParams
 
 # 设置中文字体支持
-rcParams['font.sans-serif'] = ['Noto Sans CJK SC', 'SimHei', 'DejaVu Sans', 'Arial']
+rcParams['font.family'] = 'sans-serif'
+rcParams['font.sans-serif'] = ['AR PL UKai CN', 'Noto Sans CJK SC', 'SimHei', 'DejaVu Sans']
 rcParams['axes.unicode_minus'] = False
 rcParams['figure.dpi'] = 150
 rcParams['savefig.dpi'] = 300
@@ -84,7 +86,7 @@ def load_summary(filepath):
 # ============================================================
 # 图1: 各阶段耗时折线图
 # ============================================================
-def plot_timing_per_frame(timing, output_dir):
+def plot_timing_per_frame(timing, output_dir, dataset=''):
     fig, ax = plt.subplots(figsize=(12, 5))
     frames = timing['frame_id']
     ax.plot(frames, timing['descriptor_time'], label='描述子提取', linewidth=0.8)
@@ -92,7 +94,7 @@ def plot_timing_per_frame(timing, output_dir):
     ax.plot(frames, timing['update_time'], label='数据库更新', linewidth=0.8)
     ax.set_xlabel('帧编号')
     ax.set_ylabel('耗时 (ms)')
-    ax.set_title('逐帧各阶段处理耗时')
+    ax.set_title(f'逐帧各阶段处理耗时 ({dataset})' if dataset else '逐帧各阶段处理耗时')
     ax.legend()
     ax.grid(True, alpha=0.3)
     fig.savefig(os.path.join(output_dir, 'fig_timing_per_frame.png'))
@@ -103,7 +105,7 @@ def plot_timing_per_frame(timing, output_dir):
 # ============================================================
 # 图2: 平均耗时柱状图
 # ============================================================
-def plot_timing_bar(timing, output_dir):
+def plot_timing_bar(timing, output_dir, dataset=''):
     fig, ax = plt.subplots(figsize=(7, 5))
     labels = ['描述子\n提取', '回环\n查询', '数据库\n更新']
     means = [
@@ -122,7 +124,7 @@ def plot_timing_bar(timing, output_dir):
         ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.5,
                 f'{m:.2f}ms', ha='center', va='bottom', fontsize=10)
     ax.set_ylabel('耗时 (ms)')
-    ax.set_title('各阶段平均处理耗时')
+    ax.set_title(f'各阶段平均处理耗时 ({dataset})' if dataset else '各阶段平均处理耗时')
     ax.grid(True, axis='y', alpha=0.3)
     fig.savefig(os.path.join(output_dir, 'fig_timing_bar.png'))
     plt.close(fig)
@@ -132,7 +134,7 @@ def plot_timing_bar(timing, output_dir):
 # ============================================================
 # 图3: 耗时占比饼图
 # ============================================================
-def plot_timing_pie(timing, output_dir):
+def plot_timing_pie(timing, output_dir, dataset=''):
     fig, ax = plt.subplots(figsize=(6, 6))
     means = [
         np.mean(timing['descriptor_time']),
@@ -142,7 +144,7 @@ def plot_timing_pie(timing, output_dir):
     labels = ['描述子提取', '回环查询', '数据库更新']
     colors = ['#4C72B0', '#55A868', '#C44E52']
     ax.pie(means, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90)
-    ax.set_title('各阶段耗时占比')
+    ax.set_title(f'各阶段耗时占比 ({dataset})' if dataset else '各阶段耗时占比')
     fig.savefig(os.path.join(output_dir, 'fig_timing_pie.png'))
     plt.close(fig)
     print('[Plot] fig_timing_pie.png')
@@ -151,7 +153,7 @@ def plot_timing_pie(timing, output_dir):
 # ============================================================
 # 图4: 轨迹图 + 回环连线
 # ============================================================
-def plot_trajectory_with_loops(traj, loop, output_dir):
+def plot_trajectory_with_loops(traj, loop, output_dir, dataset=''):
     fig, ax = plt.subplots(figsize=(10, 10))
     ax.plot(traj['x'], traj['y'], 'b-', linewidth=0.5, label='运动轨迹', zorder=1)
     ax.scatter(traj['x'][0], traj['y'][0], c='green', s=80, marker='^', label='起点', zorder=3)
@@ -185,7 +187,7 @@ def plot_trajectory_with_loops(traj, loop, output_dir):
 
     ax.set_xlabel('X (m)')
     ax.set_ylabel('Y (m)')
-    ax.set_title('轨迹与回环检测结果')
+    ax.set_title(f'轨迹与回环检测结果 ({dataset})' if dataset else '轨迹与回环检测结果')
     ax.legend(loc='best')
     ax.set_aspect('equal')
     ax.grid(True, alpha=0.3)
@@ -197,7 +199,7 @@ def plot_trajectory_with_loops(traj, loop, output_dir):
 # ============================================================
 # 图5: 回环检测得分分布直方图
 # ============================================================
-def plot_score_distribution(loop, output_dir):
+def plot_score_distribution(loop, output_dir, dataset=''):
     fig, ax = plt.subplots(figsize=(8, 5))
     tp_mask = loop['is_tp'] == 1
     fp_mask = loop['is_tp'] == 0
@@ -209,7 +211,7 @@ def plot_score_distribution(loop, output_dir):
 
     ax.set_xlabel('匹配得分')
     ax.set_ylabel('数量')
-    ax.set_title('回环检测得分分布')
+    ax.set_title(f'回环检测得分分布 ({dataset})' if dataset else '回环检测得分分布')
     ax.legend()
     ax.grid(True, alpha=0.3)
     fig.savefig(os.path.join(output_dir, 'fig_score_distribution.png'))
@@ -220,7 +222,7 @@ def plot_score_distribution(loop, output_dir):
 # ============================================================
 # 图6: Overlap 分布直方图
 # ============================================================
-def plot_overlap_distribution(loop, output_dir):
+def plot_overlap_distribution(loop, output_dir, dataset=''):
     fig, ax = plt.subplots(figsize=(8, 5))
     tp_mask = loop['is_tp'] == 1
     fp_mask = loop['is_tp'] == 0
@@ -233,7 +235,7 @@ def plot_overlap_distribution(loop, output_dir):
     ax.axvline(x=0.5, color='black', linestyle='--', linewidth=1.5, label='重叠率阈值 (0.5)')
     ax.set_xlabel('点云重叠率')
     ax.set_ylabel('数量')
-    ax.set_title('点云重叠率分布')
+    ax.set_title(f'点云重叠率分布 ({dataset})' if dataset else '点云重叠率分布')
     ax.legend()
     ax.grid(True, alpha=0.3)
     fig.savefig(os.path.join(output_dir, 'fig_overlap_distribution.png'))
@@ -244,7 +246,7 @@ def plot_overlap_distribution(loop, output_dir):
 # ============================================================
 # 图7: Precision-Recall 曲线 (按 score 阈值扫描)
 # ============================================================
-def plot_precision_recall(loop, traj, skip_near_num, output_dir):
+def plot_precision_recall(loop, traj, skip_near_num, output_dir, dataset=''):
     """
     通过扫描不同的 score 阈值来计算 P-R 曲线。
     Ground truth: overlap >= 0.5 的帧对为正样本。
@@ -283,7 +285,7 @@ def plot_precision_recall(loop, traj, skip_near_num, output_dir):
     ax.fill_between(recalls, precisions, alpha=0.1, color='blue')
     ax.set_xlabel('召回率')
     ax.set_ylabel('精确率')
-    ax.set_title('精确率-召回率曲线')
+    ax.set_title(f'精确率-召回率曲线 ({dataset})' if dataset else '精确率-召回率曲线')
     ax.set_xlim([0, 1.05])
     ax.set_ylim([0, 1.05])
     ax.grid(True, alpha=0.3)
@@ -304,7 +306,7 @@ def plot_precision_recall(loop, traj, skip_near_num, output_dir):
 # ============================================================
 # 图8: 描述子数量变化
 # ============================================================
-def plot_descriptor_count(desc_count, output_dir):
+def plot_descriptor_count(desc_count, output_dir, dataset=''):
     fig, ax1 = plt.subplots(figsize=(12, 5))
     frames = desc_count['frame_id']
     ax1.plot(frames, desc_count['btc_count'], 'b-', linewidth=0.8, label='BTC描述子数量')
@@ -313,7 +315,7 @@ def plot_descriptor_count(desc_count, output_dir):
     ax1.tick_params(axis='y', labelcolor='b')
     ax1.grid(True, alpha=0.3)
     ax1.legend(loc='upper left')
-    ax1.set_title('逐帧描述子数量变化')
+    ax1.set_title(f'逐帧描述子数量变化 ({dataset})' if dataset else '逐帧描述子数量变化')
     fig.savefig(os.path.join(output_dir, 'fig_descriptor_count.png'))
     plt.close(fig)
     print('[Plot] fig_descriptor_count.png')
@@ -322,7 +324,7 @@ def plot_descriptor_count(desc_count, output_dir):
 # ============================================================
 # 图9: 回环检测时间帧对矩阵图
 # ============================================================
-def plot_loop_matrix(loop, total_frames, output_dir):
+def plot_loop_matrix(loop, total_frames, output_dir, dataset=''):
     fig, ax = plt.subplots(figsize=(8, 8))
     matrix = np.zeros((total_frames, total_frames))
 
@@ -338,7 +340,7 @@ def plot_loop_matrix(loop, total_frames, output_dir):
     im = ax.imshow(matrix, cmap=cmap, vmin=-1, vmax=1, origin='lower', aspect='equal')
     ax.set_xlabel('帧编号')
     ax.set_ylabel('帧编号')
-    ax.set_title('回环检测帧对矩阵')
+    ax.set_title(f'回环检测帧对矩阵 ({dataset})' if dataset else '回环检测帧对矩阵')
     cbar = fig.colorbar(im, ax=ax, shrink=0.8)
     cbar.set_ticks([-1, 0, 1])
     cbar.set_ticklabels(['假阳性', '无回环', '真阳性'])
@@ -350,7 +352,7 @@ def plot_loop_matrix(loop, total_frames, output_dir):
 # ============================================================
 # 图10: 汇总统计表格图
 # ============================================================
-def plot_summary_table(summary, timing, output_dir):
+def plot_summary_table(summary, timing, output_dir, dataset=''):
     fig, ax = plt.subplots(figsize=(8, 5))
     ax.axis('off')
 
@@ -383,7 +385,7 @@ def plot_summary_table(summary, timing, output_dir):
         table[0, j].set_facecolor('#4C72B0')
         table[0, j].set_text_props(color='white', fontweight='bold')
 
-    ax.set_title('实验结果汇总', fontsize=14, fontweight='bold', pad=20)
+    ax.set_title(f'实验结果汇总 ({dataset})' if dataset else '实验结果汇总', fontsize=14, fontweight='bold', pad=20)
     fig.savefig(os.path.join(output_dir, 'fig_summary_table.png'))
     plt.close(fig)
     print('[Plot] fig_summary_table.png')
@@ -393,10 +395,13 @@ def plot_summary_table(summary, timing, output_dir):
 # Main
 # ============================================================
 def main():
-    if len(sys.argv) > 1:
-        result_dir = sys.argv[1]
-    else:
-        result_dir = './btc_results'
+    parser = argparse.ArgumentParser(description='BTC 实验结果绘图')
+    parser.add_argument('result_dir', nargs='?', default='./btc_results', help='实验结果目录')
+    parser.add_argument('--dataset', '-d', default='', help='数据集名称，显示在图表标题中 (如 KITTI-05)')
+    args = parser.parse_args()
+
+    result_dir = args.result_dir
+    ds = args.dataset
 
     if not os.path.isdir(result_dir):
         print(f'Error: directory {result_dir} not found')
@@ -407,6 +412,8 @@ def main():
 
     print(f'Reading data from: {result_dir}')
     print(f'Saving figures to: {output_dir}')
+    if ds:
+        print(f'Dataset label: {ds}')
     print('=' * 50)
 
     # Load data
@@ -421,19 +428,19 @@ def main():
         loop = load_loop_data(loop_path)
 
     # Generate all plots
-    plot_timing_per_frame(timing, output_dir)
-    plot_timing_bar(timing, output_dir)
-    plot_timing_pie(timing, output_dir)
-    plot_trajectory_with_loops(traj, loop, output_dir)
-    plot_descriptor_count(desc_count, output_dir)
+    plot_timing_per_frame(timing, output_dir, ds)
+    plot_timing_bar(timing, output_dir, ds)
+    plot_timing_pie(timing, output_dir, ds)
+    plot_trajectory_with_loops(traj, loop, output_dir, ds)
+    plot_descriptor_count(desc_count, output_dir, ds)
 
     if loop is not None and len(loop['query_id']) > 0:
-        plot_score_distribution(loop, output_dir)
-        plot_overlap_distribution(loop, output_dir)
-        plot_precision_recall(loop, traj, skip_near_num=100, output_dir=output_dir)
-        plot_loop_matrix(loop, len(traj['frame_id']), output_dir)
+        plot_score_distribution(loop, output_dir, ds)
+        plot_overlap_distribution(loop, output_dir, ds)
+        plot_precision_recall(loop, traj, skip_near_num=100, output_dir=output_dir, dataset=ds)
+        plot_loop_matrix(loop, len(traj['frame_id']), output_dir, ds)
 
-    plot_summary_table(summary, timing, output_dir)
+    plot_summary_table(summary, timing, output_dir, ds)
 
     print('=' * 50)
     print(f'Done! {len(os.listdir(output_dir))} figures generated in {output_dir}')
