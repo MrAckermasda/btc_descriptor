@@ -137,7 +137,31 @@
 cd ~/lcd_ws && catkin_make
 roslaunch btc_desc place_recognition.launch
 
-# 2. 绘图
-python3 src/btc_descriptor/scripts/plot_results.py src/btc_descriptor/btc_results
+# 2. 绘图（通过 --dataset 指定数据集名称，显示在图表标题中）
+python3 src/btc_descriptor/scripts/plot_results.py src/btc_descriptor/btc_results --dataset KITTI-05
 # 图表输出至 btc_results/figures/
+```
+
+---
+
+## v1.0.1 — 绘图脚本中文化与数据集标注 (2026-03-19)
+
+绘图脚本全面中文化，并支持在图表标题中标注数据集名称。
+
+### 修改
+
+- `scripts/plot_results.py`：
+  - 所有图表标题、坐标轴标签、图例、表格内容改为中文
+  - 修复中文字体缺失问题，使用系统自带 `AR PL UKai CN` 字体
+  - 新增 `--dataset` / `-d` 命令行参数，指定数据集名称（如 `KITTI-05`），自动拼接到所有图表标题中
+  - 改用 `argparse` 解析命令行参数
+
+### 使用方法
+
+```bash
+# 指定数据集名称
+python3 scripts/plot_results.py ./btc_results --dataset KITTI-05
+
+# 未来其他数据集
+python3 scripts/plot_results.py ./btc_results -d BUAA-Campus
 ```

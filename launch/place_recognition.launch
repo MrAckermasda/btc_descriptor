@@ -2,6 +2,7 @@
 <!-- Launch file for Place recognition example -->
 
   <arg name="rviz" default="true" />
+  <arg name="dataset_name" default="kitti00" />
 
   <node 
 		pkg="btc_desc" 
@@ -13,9 +14,9 @@
   <param name="cloud_overlap_thr" type="double" value = "0.5"/>
   <param name="read_bin" type="bool" value="true" />
   <param name="setting_path" type="string" value = "$(find btc_desc)/config/config_outdoor.yaml"/>
-  <param name="pcds_dir" type="string" value = "/media/lyl/KESU/datasets/2011_09_30/2011_09_30_drive_0018_sync/kitti05_velodyne_points/data"/>
-  <param name="pose_file" type="string" value = "/home/lyl/lcd_ws/src/btc_descriptor/poses/kitti05.txt"/>
-  <param name="output_dir" type="string" value = "$(find btc_desc)/btc_results"/>
+  <param name="pcds_dir" type="string" value = "/media/lyl/EAGET/datasets/2011_09_30/2011_10_03_drive_0027_sync/2011_10_03/2011_10_03_drive_0027_sync/velodyne_points/data"/>
+  <param name="pose_file" type="string" value = "/home/lyl/lcd_ws/src/btc_descriptor/poses/$(arg dataset_name).txt"/>
+  <param name="output_dir" type="string" value = "$(find btc_desc)/btc_results/$(arg dataset_name)"/>
 
   <group if="$(arg rviz)">
     <node launch-prefix="nice" pkg="rviz" type="rviz" name="rviz" args="-d $(find btc_desc)/rviz_cfg/loop.rviz" />

@@ -1,5 +1,6 @@
 # Edit at https://www.toptal.com/developers/gitignore?templates=python
-
+中期报告.md
+btc_descs/
 ### Python ###
 # Byte-compiled / optimized / DLL files
 __pycache__/

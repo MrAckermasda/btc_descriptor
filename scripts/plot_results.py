@@ -326,25 +326,35 @@ def plot_descriptor_count(desc_count, output_dir, dataset=''):
 # ============================================================
 def plot_loop_matrix(loop, total_frames, output_dir, dataset=''):
     fig, ax = plt.subplots(figsize=(8, 8))
-    matrix = np.zeros((total_frames, total_frames))
 
+    tp_q, tp_m, fp_q, fp_m = [], [], [], []
     for i in range(len(loop['query_id'])):
         qid = loop['query_id'][i]
         mid = loop['matched_id'][i]
         if qid < total_frames and mid < total_frames:
-            val = 1 if loop['is_tp'][i] == 1 else -1
-            matrix[qid, mid] = val
-            matrix[mid, qid] = val
+            if loop['is_tp'][i] == 1:
+                tp_q.extend([qid, mid])
+                tp_m.extend([mid, qid])
+            else:
+                fp_q.extend([qid, mid])
+                fp_m.extend([mid, qid])
 
-    cmap = plt.cm.RdYlGn
-    im = ax.imshow(matrix, cmap=cmap, vmin=-1, vmax=1, origin='lower', aspect='equal')
+    # 先画对角线参考
+    ax.plot([0, total_frames], [0, total_frames], 'k--', alpha=0.2, linewidth=0.5)
+    if fp_q:
+        ax.scatter(fp_q, fp_m, c='red', s=20, marker='x', linewidths=1.0, label='假阳性', zorder=2)
+    if tp_q:
+        ax.scatter(tp_q, tp_m, c='limegreen', s=20, marker='o', edgecolors='darkgreen',
+                   linewidths=0.5, label='真阳性', zorder=3)
+
+    ax.set_xlim(0, total_frames)
+    ax.set_ylim(0, total_frames)
+    ax.set_aspect('equal')
     ax.set_xlabel('帧编号')
     ax.set_ylabel('帧编号')
     ax.set_title(f'回环检测帧对矩阵 ({dataset})' if dataset else '回环检测帧对矩阵')
-    cbar = fig.colorbar(im, ax=ax, shrink=0.8)
-    cbar.set_ticks([-1, 0, 1])
-    cbar.set_ticklabels(['假阳性', '无回环', '真阳性'])
-    fig.savefig(os.path.join(output_dir, 'fig_loop_matrix.png'))
+    ax.legend(loc='upper left', fontsize=10)
+    fig.savefig(os.path.join(output_dir, 'fig_loop_matrix.png'), dpi=150)
     plt.close(fig)
     print('[Plot] fig_loop_matrix.png')
 
@@ -394,10 +404,298 @@ def plot_summary_table(summary, timing, output_dir, dataset=''):
 # ============================================================
 # Main
 # ============================================================
+# ============================================================
+# 整合图：每类图四个子图，对应 kitti02/05/06/07
+# ============================================================
+
+SEQUENCES = ['kitti00', 'kitti02', 'kitti05', 'kitti07']
+SEQ_LABELS = ['KITTI-00', 'KITTI-02', 'KITTI-05', 'KITTI-07']
+
+
+def _load_seq_data(base_dir, seq):
+    d = os.path.join(base_dir, seq)
+    if not os.path.isdir(d):
+        return None
+    try:
+        timing = load_timing_data(os.path.join(d, 'timing_per_frame.txt'))
+        traj = load_trajectory(os.path.join(d, 'trajectory.txt'))
+        desc_count = load_descriptor_count(os.path.join(d, 'descriptor_count.txt'))
+        summary = load_summary(os.path.join(d, 'summary.txt'))
+        loop = None
+        lp = os.path.join(d, 'loop_detection.txt')
+        if os.path.exists(lp) and os.path.getsize(lp) > 50:
+            loop = load_loop_data(lp)
+        return dict(timing=timing, traj=traj, desc_count=desc_count,
+                    summary=summary, loop=loop)
+    except Exception as e:
+        print(f'[Warn] Failed to load {seq}: {e}')
+        return None
+
+
+def plot_combined_trajectory(all_data, output_dir):
+    fig, axes = plt.subplots(2, 2, figsize=(16, 16))
+    axes = axes.flatten()
+    for ax, seq, label in zip(axes, SEQUENCES, SEQ_LABELS):
+        d = all_data.get(seq)
+        if d is None:
+            ax.set_title(f'{label} (数据缺失)'); ax.axis('off'); continue
+        traj, loop = d['traj'], d['loop']
+        ax.plot(traj['x'], traj['y'], 'b-', linewidth=0.5, label='轨迹', zorder=1)
+        ax.scatter(traj['x'][0], traj['y'][0], c='green', s=60, marker='^', label='起点', zorder=3)
+        ax.scatter(traj['x'][-1], traj['y'][-1], c='red', s=60, marker='v', label='终点', zorder=3)
+        if loop is not None and len(loop['query_id']) > 0:
+            tp_mask = loop['is_tp'] == 1
+            fp_mask = loop['is_tp'] == 0
+            for i in np.where(fp_mask)[0]:
+                qid, mid = loop['query_id'][i], loop['matched_id'][i]
+                if qid < len(traj['x']) and mid < len(traj['x']):
+                    ax.plot([traj['x'][qid], traj['x'][mid]], [traj['y'][qid], traj['y'][mid]],
+                            'r--', linewidth=0.8, alpha=0.5, zorder=2)
+            for i in np.where(tp_mask)[0]:
+                qid, mid = loop['query_id'][i], loop['matched_id'][i]
+                if qid < len(traj['x']) and mid < len(traj['x']):
+                    ax.plot([traj['x'][qid], traj['x'][mid]], [traj['y'][qid], traj['y'][mid]],
+                            'g-', linewidth=1.2, alpha=0.6, zorder=2)
+            ax.plot([], [], 'g-', linewidth=2, label='真阳性')
+            ax.plot([], [], 'r--', linewidth=2, label='假阳性')
+        ax.set_title(label, fontsize=13, fontweight='bold')
+        ax.set_xlabel('X (m)'); ax.set_ylabel('Y (m)')
+        ax.set_aspect('equal'); ax.legend(loc='best', fontsize=8); ax.grid(True, alpha=0.3)
+    fig.suptitle('轨迹与回环检测结果对比', fontsize=16, fontweight='bold')
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    fig.savefig(os.path.join(output_dir, 'combined_trajectory.png')); plt.close(fig)
+    print('[Combined] combined_trajectory.png')
+
+
+def plot_combined_timing_per_frame(all_data, output_dir):
+    fig, axes = plt.subplots(2, 2, figsize=(18, 10))
+    axes = axes.flatten()
+    for ax, seq, label in zip(axes, SEQUENCES, SEQ_LABELS):
+        d = all_data.get(seq)
+        if d is None:
+            ax.set_title(f'{label} (数据缺失)'); ax.axis('off'); continue
+        t = d['timing']
+        ax.plot(t['frame_id'], t['descriptor_time'], linewidth=0.7, label='描述子提取')
+        ax.plot(t['frame_id'], t['query_time'], linewidth=0.7, label='回环查询')
+        ax.plot(t['frame_id'], t['update_time'], linewidth=0.7, label='数据库更新')
+        ax.set_title(label, fontsize=13, fontweight='bold')
+        ax.set_xlabel('帧编号'); ax.set_ylabel('耗时 (ms)')
+        ax.legend(fontsize=8); ax.grid(True, alpha=0.3)
+    fig.suptitle('逐帧各阶段处理耗时对比', fontsize=16, fontweight='bold')
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    fig.savefig(os.path.join(output_dir, 'combined_timing_per_frame.png')); plt.close(fig)
+    print('[Combined] combined_timing_per_frame.png')
+
+
+def plot_combined_timing_bar(all_data, output_dir):
+    colors = ['#4C72B0', '#55A868', '#C44E52']
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    axes = axes.flatten()
+    for ax, seq, label in zip(axes, SEQUENCES, SEQ_LABELS):
+        d = all_data.get(seq)
+        if d is None:
+            ax.set_title(f'{label} (数据缺失)'); ax.axis('off'); continue
+        t = d['timing']
+        xlabels = ['描述子\n提取', '回环\n查询', '数据库\n更新']
+        means = [np.mean(t['descriptor_time']), np.mean(t['query_time']), np.mean(t['update_time'])]
+        stds  = [np.std(t['descriptor_time']),  np.std(t['query_time']),  np.std(t['update_time'])]
+        bars = ax.bar(xlabels, means, yerr=stds, color=colors, capsize=4, edgecolor='black', linewidth=0.5)
+        for bar, m in zip(bars, means):
+            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.3,
+                    f'{m:.1f}', ha='center', va='bottom', fontsize=9)
+        ax.set_title(label, fontsize=13, fontweight='bold')
+        ax.set_ylabel('耗时 (ms)'); ax.grid(True, axis='y', alpha=0.3)
+    fig.suptitle('各阶段平均处理耗时对比', fontsize=16, fontweight='bold')
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    fig.savefig(os.path.join(output_dir, 'combined_timing_bar.png')); plt.close(fig)
+    print('[Combined] combined_timing_bar.png')
+
+
+def plot_combined_score_distribution(all_data, output_dir):
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    axes = axes.flatten()
+    for ax, seq, label in zip(axes, SEQUENCES, SEQ_LABELS):
+        d = all_data.get(seq)
+        if d is None or d['loop'] is None:
+            ax.set_title(f'{label} (无回环数据)'); ax.axis('off'); continue
+        loop = d['loop']
+        tp = loop['is_tp'] == 1; fp = loop['is_tp'] == 0
+        if np.any(tp):
+            ax.hist(loop['score'][tp], bins=20, alpha=0.7, color='green', label='真阳性', edgecolor='black')
+        if np.any(fp):
+            ax.hist(loop['score'][fp], bins=20, alpha=0.7, color='red', label='假阳性', edgecolor='black')
+        ax.set_title(label, fontsize=13, fontweight='bold')
+        ax.set_xlabel('匹配得分'); ax.set_ylabel('数量')
+        ax.legend(fontsize=8); ax.grid(True, alpha=0.3)
+    fig.suptitle('回环检测得分分布对比', fontsize=16, fontweight='bold')
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    fig.savefig(os.path.join(output_dir, 'combined_score_distribution.png')); plt.close(fig)
+    print('[Combined] combined_score_distribution.png')
+
+
+def plot_combined_precision_recall(all_data, output_dir):
+    fig, axes = plt.subplots(2, 2, figsize=(14, 12))
+    axes = axes.flatten()
+    for ax, seq, label in zip(axes, SEQUENCES, SEQ_LABELS):
+        d = all_data.get(seq)
+        if d is None or d['loop'] is None:
+            ax.set_title(f'{label} (无回环数据)'); ax.axis('off'); continue
+        loop = d['loop']
+        scores = loop['score']; is_tp = loop['is_tp']
+        total_gt = np.sum(is_tp)
+        if total_gt == 0:
+            ax.set_title(f'{label} (无真阳性)'); ax.axis('off'); continue
+        thresholds = np.linspace(np.min(scores), np.max(scores), 200)
+        precisions, recalls = [], []
+        for thr in thresholds:
+            detected = scores >= thr
+            if np.sum(detected) == 0: continue
+            tp_n = np.sum(detected & (is_tp == 1))
+            fp_n = np.sum(detected & (is_tp == 0))
+            precisions.append(tp_n / (tp_n + fp_n))
+            recalls.append(tp_n / total_gt)
+        ax.plot(recalls, precisions, 'b-', linewidth=2)
+        ax.fill_between(recalls, precisions, alpha=0.1, color='blue')
+        f1s = [2*p*r/(p+r) if (p+r) > 0 else 0 for p, r in zip(precisions, recalls)]
+        if f1s:
+            idx = int(np.argmax(f1s))
+            ax.scatter(recalls[idx], precisions[idx], c='red', s=80, zorder=5,
+                       label=f'F1={f1s[idx]:.3f}')
+            ax.legend(fontsize=9)
+        ax.set_title(label, fontsize=13, fontweight='bold')
+        ax.set_xlabel('召回率'); ax.set_ylabel('精确率')
+        ax.set_xlim([0, 1.05]); ax.set_ylim([0, 1.05]); ax.grid(True, alpha=0.3)
+    fig.suptitle('精确率-召回率曲线对比', fontsize=16, fontweight='bold')
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    fig.savefig(os.path.join(output_dir, 'combined_precision_recall.png')); plt.close(fig)
+    print('[Combined] combined_precision_recall.png')
+
+
+def plot_combined_loop_matrix(all_data, output_dir):
+    fig, axes = plt.subplots(2, 2, figsize=(16, 16))
+    axes = axes.flatten()
+    for ax, seq, label in zip(axes, SEQUENCES, SEQ_LABELS):
+        d = all_data.get(seq)
+        if d is None or d['loop'] is None:
+            ax.set_title(f'{label} (无回环数据)'); ax.axis('off'); continue
+        loop = d['loop']
+        n = len(d['traj']['frame_id'])
+        tp_q, tp_m, fp_q, fp_m = [], [], [], []
+        for i in range(len(loop['query_id'])):
+            qid, mid = loop['query_id'][i], loop['matched_id'][i]
+            if qid < n and mid < n:
+                if loop['is_tp'][i] == 1:
+                    tp_q.extend([qid, mid]); tp_m.extend([mid, qid])
+                else:
+                    fp_q.extend([qid, mid]); fp_m.extend([mid, qid])
+        ax.plot([0, n], [0, n], 'k--', alpha=0.2, linewidth=0.5)
+        if fp_q:
+            ax.scatter(fp_q, fp_m, c='red', s=8, marker='x', linewidths=0.8, label='假阳性', zorder=2)
+        if tp_q:
+            ax.scatter(tp_q, tp_m, c='limegreen', s=8, marker='o', edgecolors='darkgreen',
+                       linewidths=0.3, label='真阳性', zorder=3)
+        ax.set_xlim(0, n); ax.set_ylim(0, n); ax.set_aspect('equal')
+        ax.set_title(label, fontsize=13, fontweight='bold')
+        ax.set_xlabel('帧编号'); ax.set_ylabel('帧编号')
+        ax.legend(loc='upper left', fontsize=8, markerscale=2)
+    fig.suptitle('回环检测帧对矩阵对比', fontsize=16, fontweight='bold')
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    fig.savefig(os.path.join(output_dir, 'combined_loop_matrix.png'), dpi=150); plt.close(fig)
+    print('[Combined] combined_loop_matrix.png')
+
+
+def plot_combined_summary(all_data, output_dir):
+    seqs_ok = [s for s in SEQUENCES if all_data.get(s) is not None]
+    labels_ok = [SEQ_LABELS[SEQUENCES.index(s)] for s in seqs_ok]
+    precisions  = [all_data[s]['summary'].get('precision', 0) for s in seqs_ok]
+    desc_times  = [all_data[s]['summary'].get('mean_descriptor_time_ms', 0) for s in seqs_ok]
+    query_times = [all_data[s]['summary'].get('mean_query_time_ms', 0) for s in seqs_ok]
+    true_loops  = [int(all_data[s]['summary'].get('true_loops', 0)) for s in seqs_ok]
+    false_loops = [int(all_data[s]['summary'].get('false_loops', 0)) for s in seqs_ok]
+    x = np.arange(len(seqs_ok)); w = 0.35
+
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    ax = axes[0, 0]
+    bars = ax.bar(x, precisions, color='#4C72B0', edgecolor='black', linewidth=0.5)
+    for bar, v in zip(bars, precisions):
+        ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
+                f'{v:.3f}', ha='center', va='bottom', fontsize=10)
+    ax.set_xticks(x); ax.set_xticklabels(labels_ok)
+    ax.set_ylabel('精确率'); ax.set_ylim(0, 1.15)
+    ax.set_title('回环检测精确率', fontweight='bold'); ax.grid(True, axis='y', alpha=0.3)
+
+    ax = axes[0, 1]
+    ax.bar(x - w/2, desc_times,  w, label='描述子提取', color='#4C72B0', edgecolor='black', linewidth=0.5)
+    ax.bar(x + w/2, query_times, w, label='回环查询',   color='#55A868', edgecolor='black', linewidth=0.5)
+    ax.set_xticks(x); ax.set_xticklabels(labels_ok)
+    ax.set_ylabel('平均耗时 (ms)')
+    ax.set_title('各阶段平均耗时对比', fontweight='bold')
+    ax.legend(fontsize=9); ax.grid(True, axis='y', alpha=0.3)
+
+    ax = axes[1, 0]
+    b1 = ax.bar(x - w/2, true_loops,  w, label='真阳性', color='#55A868', edgecolor='black', linewidth=0.5)
+    b2 = ax.bar(x + w/2, false_loops, w, label='假阳性', color='#C44E52', edgecolor='black', linewidth=0.5)
+    for bar, v in zip(b1, true_loops):
+        ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 1,
+                str(v), ha='center', va='bottom', fontsize=9)
+    for bar, v in zip(b2, false_loops):
+        ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 1,
+                str(v), ha='center', va='bottom', fontsize=9)
+    ax.set_xticks(x); ax.set_xticklabels(labels_ok)
+    ax.set_ylabel('回环数量')
+    ax.set_title('真阳性 vs 假阳性数量', fontweight='bold')
+    ax.legend(fontsize=9); ax.grid(True, axis='y', alpha=0.3)
+
+    ax = axes[1, 1]; ax.axis('off')
+    col_labels = ['序列', '总帧数', '精确率', '均值总耗时(ms)']
+    table_data = []
+    for s, lab in zip(seqs_ok, labels_ok):
+        sm = all_data[s]['summary']
+        table_data.append([lab, str(int(sm.get('total_frames', 0))),
+                           f"{sm.get('precision', 0):.4f}",
+                           f"{sm.get('mean_total_time_ms', 0):.2f}"])
+    tbl = ax.table(cellText=table_data, colLabels=col_labels, loc='center', cellLoc='center')
+    tbl.auto_set_font_size(False); tbl.set_fontsize(10); tbl.scale(1.2, 2.0)
+    for j in range(len(col_labels)):
+        tbl[0, j].set_facecolor('#4C72B0')
+        tbl[0, j].set_text_props(color='white', fontweight='bold')
+    ax.set_title('汇总参数表', fontweight='bold', pad=60)
+
+    fig.suptitle('KITTI 序列实验结果对比', fontsize=16, fontweight='bold')
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    fig.savefig(os.path.join(output_dir, 'combined_summary.png')); plt.close(fig)
+    print('[Combined] combined_summary.png')
+
+
+def main_combined(base_dir, output_dir):
+    os.makedirs(output_dir, exist_ok=True)
+    print(f'Loading data from: {base_dir}')
+    print(f'Saving combined figures to: {output_dir}')
+    print('=' * 50)
+    all_data = {}
+    for seq in SEQUENCES:
+        d = _load_seq_data(base_dir, seq)
+        if d is not None:
+            all_data[seq] = d; print(f'  [OK] {seq}')
+        else:
+            print(f'  [Miss] {seq}')
+    plot_combined_trajectory(all_data, output_dir)
+    plot_combined_timing_per_frame(all_data, output_dir)
+    plot_combined_timing_bar(all_data, output_dir)
+    plot_combined_score_distribution(all_data, output_dir)
+    plot_combined_precision_recall(all_data, output_dir)
+    plot_combined_loop_matrix(all_data, output_dir)
+    plot_combined_summary(all_data, output_dir)
+    print('=' * 50)
+    print(f'Done! {len(os.listdir(output_dir))} figures in {output_dir}')
+
+
 def main():
     parser = argparse.ArgumentParser(description='BTC 实验结果绘图')
     parser.add_argument('result_dir', nargs='?', default='./btc_results', help='实验结果目录')
     parser.add_argument('--dataset', '-d', default='', help='数据集名称，显示在图表标题中 (如 KITTI-05)')
+    parser.add_argument('--combined', '-c', action='store_true',
+                        help='生成整合对比图（kitti02/05/06/07 各一子图），result_dir 为包含各序列子目录的父目录')
     args = parser.parse_args()
 
     result_dir = args.result_dir
@@ -406,6 +704,11 @@ def main():
     if not os.path.isdir(result_dir):
         print(f'Error: directory {result_dir} not found')
         sys.exit(1)
+
+    if args.combined:
+        output_dir = os.path.join(result_dir, 'figures')
+        main_combined(result_dir, output_dir)
+        return
 
     output_dir = os.path.join(result_dir, 'figures')
     os.makedirs(output_dir, exist_ok=True)

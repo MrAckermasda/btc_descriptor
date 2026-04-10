@@ -103,11 +103,13 @@ int main(int argc, char **argv) {
 
     if (read_bin) {
       std::ostringstream ss;
-      ss << pcds_dir << "/" << std::setfill('0') << std::setw(6) << frame_id
+      ss << pcds_dir << "/" << std::setfill('0') << std::setw(10) << frame_id
          << ".bin";
+      ROS_INFO_STREAM("[Extractor] Trying to open: " << ss.str());
       auto lidar_data = read_lidar_data(ss.str());
       if (lidar_data.empty()) {
-        ROS_INFO_STREAM("[Extractor] No more .bin files at frame " << frame_id);
+        ROS_WARN_STREAM("[Extractor] Failed to read .bin at frame " << frame_id
+                        << ", path: " << ss.str());
         break;
       }
       for (size_t i = 0; i + 3 < lidar_data.size(); i += 4) {
